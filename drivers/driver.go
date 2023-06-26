@@ -1,6 +1,10 @@
 package drivers
 
 import (
+	"encoding/json"
+	"os"
+	"strings"
+
 	"github.com/samber/lo"
 )
 
@@ -9,9 +13,25 @@ var (
 )
 
 type Config struct {
-	URL      string
-	Username string
-	Password string
+	Driver   string `json:"driver"`
+	URL      string `json:"url"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	err = json.Unmarshal(buf, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }
 
 type Driver interface {
@@ -19,14 +39,16 @@ type Driver interface {
 	AddMagnetURL(config *Config, magnet string) error
 }
 
-func registerDriver(driver Driver) {
-	drivers[driver.Name()] = driver
+func registerDriver(d Driver) {
+	drivers[strings.ToLower(d.Name())] = d
 }
 
 func ListDrivers() []string {
-	return lo.Keys(drivers)
+	return lo.Map(lo.Values(drivers), func(d Driver, _ int) string {
+		return d.Name()
+	})
 }
 
 func GetDriver(name string) Driver {
-	return drivers[name]
+	return drivers[strings.ToLower(name)]
 }
