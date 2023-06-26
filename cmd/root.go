@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -22,6 +23,9 @@ var (
 	rootCmd = &cobra.Command{
 		Use:   "mlfu",
 		Short: "Magnet Link Forwarding Utility",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return setupLogging()
+		},
 	}
 
 	setupCmd = &cobra.Command{
@@ -54,6 +58,15 @@ func Execute() {
 	rootCmd.Execute()
 }
 
+func setupLogging() error {
+	logFile, err := os.OpenFile(args.LogPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to setup logging: %w", err)
+	}
+	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	return nil
+}
+
 func setup() error {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -61,15 +74,16 @@ func setup() error {
 	}
 
 	absConfigPath, _ := filepath.Abs(args.ConfigPath)
+	absLogPath, _ := filepath.Abs(args.LogPath)
 
 	desktopFilePath := fmt.Sprintf("%s/.local/share/applications/mlfu.desktop", os.Getenv("HOME"))
 	desktopFileData := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Name=Magnet Link Relay Utility
-Exec=%s --config %s open %%u
+Exec=%s --config %s --log %s open %%u
 StartupNotify=false
 MimeType=x-scheme-handler/magnet;
-`, execPath, absConfigPath)
+`, execPath, absConfigPath, absLogPath)
 
 	err = os.WriteFile(desktopFilePath, []byte(desktopFileData), 0644)
 	if err != nil {
@@ -81,6 +95,7 @@ MimeType=x-scheme-handler/magnet;
 	if err := cmd.Run(); err != nil {
 		return err
 	}
+	log.Printf("ran xdg-mime to update url handler registry")
 
 	return nil
 }
@@ -95,6 +110,13 @@ func open(magnet string) error {
 	if driver == nil {
 		return fmt.Errorf("driver %q not found", config.Driver)
 	}
+	log.Printf("loaded driver %s", driver.Name())
 
-	return driver.AddMagnetURL(config, magnet)
+	err = driver.AddMagnetURL(config, magnet)
+	if err != nil {
+		return err
+	}
+	log.Printf("sent magnet link to client")
+
+	return nil
 }
